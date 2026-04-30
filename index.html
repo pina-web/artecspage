@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>아르떼조명 도면 이미지 생성기(C/S CENTER)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+    background: #f5f5f7;
+    padding: 14px;
+    overflow: hidden;
+  }
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 28px);
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  h1 {
+    text-align: center;
+    margin-bottom: 12px;
+    color: #333;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 14px;
+    flex: 1;
+    min-height: 0;
+  }
+  .panel {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .panel.right {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+    padding: 16px;
+  }
+  .section {
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #eee;
+  }
+  .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .text-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.2s;
+  }
+  .text-input:focus { outline: none; border-color: #4a90e2; }
+  .color-presets {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .color-preset {
+    aspect-ratio: 1;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 3px solid transparent;
+    transition: all 0.15s;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 4px;
+  }
+  .color-preset:hover { transform: scale(1.05); }
+  .color-preset.active {
+    border-color: #333;
+    box-shadow: 0 0 0 2px white, 0 0 0 4px #333;
+  }
+  .color-preset .label {
+    font-size: 10px;
+    color: rgba(0,0,0,0.7);
+    font-weight: 600;
+    text-shadow: 0 0 2px rgba(255,255,255,0.6);
+    pointer-events: none;
+  }
+  .color-picker-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #888;
+  }
+  input[type="color"] {
+    width: 44px;
+    height: 32px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 2px;
+  }
+  .upload-btn, .action-btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .upload-btn {
+    background: #4a90e2;
+    color: white;
+    width: 100%;
+  }
+  .upload-btn:hover { background: #357abd; }
+  .file-name {
+    font-size: 11px;
+    color: #888;
+    margin-top: 6px;
+    word-break: break-all;
+  }
+  .action-btn { background: #2c2c2c; color: white; flex: 1; }
+  .action-btn:hover { background: #000; }
+  .action-btn.copy-btn { background: #ffd44a; color: #333; }
+  .action-btn.copy-btn:hover { background: #ffc107; }
+  .preview-label {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+  }
+  .canvas-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fafafa;
+  }
+  canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    cursor: grab;
+    touch-action: none;
+  }
+  canvas.dragging { cursor: grabbing; }
+  canvas.no-image { cursor: default; }
+  .action-buttons {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-top: 12px;
+    flex-shrink: 0;
+  }
+  .toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #2c2c2c;
+    color: white;
+    padding: 14px 28px;
+    border-radius: 8px;
+    font-size: 14px;
+    opacity: 0;
+    transition: all 0.3s;
+    pointer-events: none;
+    z-index: 1000;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .toast.success { background: #4caf50; }
+  .toast.error { background: #f44336; }
+  #fileInput { display: none; }
+  .image-controls { display: none; }
+  .image-controls.active { display: block; }
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .slider-row:last-child { margin-bottom: 0; }
+  .slider-row label {
+    min-width: 80px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #555;
+  }
+  .slider-row input[type="range"] {
+    flex: 1;
+    min-width: 80px;
+  }
+  .slider-row .value-display {
+    min-width: 44px;
+    font-size: 12px;
+    color: #666;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .help-text {
+    font-size: 11px;
+    color: #4a90e2;
+    margin-top: 8px;
+    background: #eef6ff;
+    padding: 7px 10px;
+    border-radius: 6px;
+    line-height: 1.4;
+  }
+  .fit-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px;
+    margin-top: 8px;
+  }
+  .fit-btn {
+    padding: 7px 8px;
+    border: 1px solid #ddd;
+    background: white;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .fit-btn:hover { background: #f0f0f0; border-color: #4a90e2; }
+  .fit-btn.reset { background: #fff5f5; border-color: #f5c5c5; color: #c44; }
+  .fit-btn.reset:hover { background: #ffeaea; }
+
+  /* 반응형: 좁은 화면에서는 위아래로 */
+  @media (max-width: 1100px) {
+    body { overflow: auto; }
+    .app { height: auto; }
+    .layout {
+      grid-template-columns: 1fr;
+      height: auto;
+    }
+    .panel { overflow-y: visible; }
+    .panel.right { overflow: visible; }
+    .canvas-wrapper { min-height: 400px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>아르떼조명 도면 이미지 생성기(C/S CENTER)</h1>
+
+  <div class="layout">
+    <!-- 왼쪽: 컨트롤 패널 -->
+    <div class="panel left">
+      <div class="section">
+        <div class="section-title">📝 제목</div>
+        <input type="text" id="titleInput" class="text-input" value="제목을 입력하세요" placeholder="제목을 입력하세요">
+      </div>
+
+      <div class="section">
+        <div class="section-title">🎨 상단 색상 (분류별)</div>
+        <div class="color-presets" id="colorPresets">
+          <div class="color-preset active" style="background:#f5e056" data-color="#f5e056"><span class="label">식탁등</span></div>
+          <div class="color-preset" style="background:#f5b840" data-color="#f5b840"><span class="label">천장/몰딩</span></div>
+          <div class="color-preset" style="background:#d4c5e8" data-color="#d4c5e8"><span class="label">시계</span></div>
+          <div class="color-preset" style="background:#d8e8c5" data-color="#d8e8c5"><span class="label">스위치</span></div>
+          <div class="color-preset" style="background:#c5dce8" data-color="#c5dce8"><span class="label">기타1</span></div>
+          <div class="color-preset" style="background:#f5c5c5" data-color="#f5c5c5"><span class="label">기타2</span></div>
+        </div>
+        <div class="color-picker-wrapper">
+          <input type="color" id="customColor" value="#f5e056">
+          <span>직접 색상 선택</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">🖼️ 제품 이미지</div>
+        <button class="upload-btn" onclick="document.getElementById('fileInput').click()">📷 이미지 업로드</button>
+        <input type="file" id="fileInput" accept="image/*">
+        <div id="fileName" class="file-name">이미지를 선택해주세요</div>
+      </div>
+
+      <div class="section image-controls" id="imageControls">
+        <div class="section-title">⚙️ 이미지 조절</div>
+        <div class="slider-row">
+          <label>🔍 확대/축소</label>
+          <input type="range" id="zoomSlider" min="10" max="500" value="100" step="1">
+          <span class="value-display" id="zoomValue">100%</span>
+        </div>
+        <div class="slider-row">
+          <label>↔️ 가로 위치</label>
+          <input type="range" id="offsetXSlider" min="-100" max="100" value="0" step="1">
+          <span class="value-display" id="offsetXValue">0</span>
+        </div>
+        <div class="slider-row">
+          <label>↕️ 세로 위치</label>
+          <input type="range" id="offsetYSlider" min="-100" max="100" value="0" step="1">
+          <span class="value-display" id="offsetYValue">0</span>
+        </div>
+        <div class="fit-buttons">
+          <button class="fit-btn" onclick="fitImage('cover')">영역 꽉 채우기</button>
+          <button class="fit-btn" onclick="fitImage('contain')">전체 보이기</button>
+          <button class="fit-btn" onclick="fitImage('100')">100% 원본</button>
+          <button class="fit-btn reset" onclick="resetImageTransform()">↺ 초기화</button>
+        </div>
+        <div class="help-text">💡 미리보기에서 마우스로 드래그하면 위치 조절, 휠을 굴리면 확대/축소 가능</div>
+      </div>
+    </div>
+
+    <!-- 오른쪽: 미리보기 + 저장 버튼 -->
+    <div class="panel right">
+      <div class="preview-label">미리보기 (저장 사이즈: 1088 × 889px)</div>
+      <div class="canvas-wrapper">
+        <canvas id="canvas" width="1088" height="889" class="no-image"></canvas>
+      </div>
+      <div class="action-buttons">
+        <button class="action-btn" onclick="downloadImage()">💾 PNG 저장</button>
+        <button class="action-btn copy-btn" onclick="copyImage()">📋 클립보드로 복사</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const titleInput = document.getElementById('titleInput');
+const customColor = document.getElementById('customColor');
+const fileInput = document.getElementById('fileInput');
+const fileName = document.getElementById('fileName');
+const colorPresets = document.getElementById('colorPresets');
+const imageControls = document.getElementById('imageControls');
+const zoomSlider = document.getElementById('zoomSlider');
+const offsetXSlider = document.getElementById('offsetXSlider');
+const offsetYSlider = document.getElementById('offsetYSlider');
+const zoomValue = document.getElementById('zoomValue');
+const offsetXValue = document.getElementById('offsetXValue');
+const offsetYValue = document.getElementById('offsetYValue');
+
+const CANVAS_W = 1088;
+const CANVAS_H = 889;
+const HEADER_H = 178;
+const IMAGE_AREA_Y = HEADER_H + 20;
+const IMAGE_AREA_H = CANVAS_H - IMAGE_AREA_Y - 20;
+const IMAGE_AREA_X = 20;
+const IMAGE_AREA_W = CANVAS_W - 40;
+
+let currentColor = '#f5e056';
+let currentImage = null;
+
+let imgState = {
+  zoom: 1.0,
+  offsetX: 0,
+  offsetY: 0,
+  baseScale: 1.0
+};
+
+colorPresets.addEventListener('click', (e) => {
+  const preset = e.target.closest('.color-preset');
+  if (!preset) return;
+  document.querySelectorAll('.color-preset').forEach(p => p.classList.remove('active'));
+  preset.classList.add('active');
+  currentColor = preset.dataset.color;
+  customColor.value = currentColor;
+  drawCanvas();
+});
+
+customColor.addEventListener('input', (e) => {
+  currentColor = e.target.value;
+  document.querySelectorAll('.color-preset').forEach(p => p.classList.remove('active'));
+  drawCanvas();
+});
+
+titleInput.addEventListener('input', drawCanvas);
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  fileName.textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      currentImage = img;
+      fitImage('cover');
+      imageControls.classList.add('active');
+      canvas.classList.remove('no-image');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+zoomSlider.addEventListener('input', (e) => {
+  imgState.zoom = parseInt(e.target.value) / 100;
+  zoomValue.textContent = e.target.value + '%';
+  drawCanvas();
+});
+
+offsetXSlider.addEventListener('input', (e) => {
+  const val = parseInt(e.target.value);
+  imgState.offsetX = (val / 100) * IMAGE_AREA_W;
+  offsetXValue.textContent = val;
+  drawCanvas();
+});
+
+offsetYSlider.addEventListener('input', (e) => {
+  const val = parseInt(e.target.value);
+  imgState.offsetY = (val / 100) * IMAGE_AREA_H;
+  offsetYValue.textContent = val;
+  drawCanvas();
+});
+
+function fitImage(mode) {
+  if (!currentImage) return;
+  const img = currentImage;
+  const imgRatio = img.width / img.height;
+  const areaRatio = IMAGE_AREA_W / IMAGE_AREA_H;
+
+  if (mode === 'cover') {
+    if (imgRatio > areaRatio) {
+      imgState.baseScale = IMAGE_AREA_H / img.height;
+    } else {
+      imgState.baseScale = IMAGE_AREA_W / img.width;
+    }
+  } else if (mode === 'contain') {
+    if (imgRatio > areaRatio) {
+      imgState.baseScale = IMAGE_AREA_W / img.width;
+    } else {
+      imgState.baseScale = IMAGE_AREA_H / img.height;
+    }
+  } else if (mode === '100') {
+    imgState.baseScale = 1.0;
+  }
+
+  imgState.zoom = 1.0;
+  imgState.offsetX = 0;
+  imgState.offsetY = 0;
+  updateSliders();
+  drawCanvas();
+}
+
+function resetImageTransform() {
+  fitImage('cover');
+}
+
+function updateSliders() {
+  zoomSlider.value = Math.round(imgState.zoom * 100);
+  zoomValue.textContent = Math.round(imgState.zoom * 100) + '%';
+  const offX = Math.round((imgState.offsetX / IMAGE_AREA_W) * 100);
+  const offY = Math.round((imgState.offsetY / IMAGE_AREA_H) * 100);
+  offsetXSlider.value = Math.max(-100, Math.min(100, offX));
+  offsetXValue.textContent = offX;
+  offsetYSlider.value = Math.max(-100, Math.min(100, offY));
+  offsetYValue.textContent = offY;
+}
+
+function drawCanvas() {
+  // 전체 배경을 상단 색상으로 채움
+  ctx.fillStyle = currentColor;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // 제목 텍스트
+  const title = titleInput.value || '제목을 입력하세요';
+  ctx.fillStyle = '#1a1a1a';
+  ctx.font = 'bold 60px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(title, CANVAS_W / 2, HEADER_H / 2);
+
+  if (currentImage) {
+    drawTransformedImage();
+  } else {
+    ctx.fillStyle = '#fafafa';
+    ctx.fillRect(IMAGE_AREA_X, IMAGE_AREA_Y, IMAGE_AREA_W, IMAGE_AREA_H);
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 10]);
+    ctx.strokeRect(IMAGE_AREA_X, IMAGE_AREA_Y, IMAGE_AREA_W, IMAGE_AREA_H);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#bbb';
+    ctx.font = '32px "Malgun Gothic", sans-serif';
+    ctx.fillText('여기에 이미지가 들어갑니다', CANVAS_W / 2, IMAGE_AREA_Y + IMAGE_AREA_H / 2);
+  }
+}
+
+function drawTransformedImage() {
+  const img = currentImage;
+  const scale = imgState.baseScale * imgState.zoom;
+  const drawW = img.width * scale;
+  const drawH = img.height * scale;
+
+  const centerX = IMAGE_AREA_X + IMAGE_AREA_W / 2;
+  const centerY = IMAGE_AREA_Y + IMAGE_AREA_H / 2;
+  const drawX = centerX - drawW / 2 + imgState.offsetX;
+  const drawY = centerY - drawH / 2 + imgState.offsetY;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(IMAGE_AREA_X, IMAGE_AREA_Y, IMAGE_AREA_W, IMAGE_AREA_H);
+  ctx.clip();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(IMAGE_AREA_X, IMAGE_AREA_Y, IMAGE_AREA_W, IMAGE_AREA_H);
+
+  ctx.drawImage(img, drawX, drawY, drawW, drawH);
+  ctx.restore();
+}
+
+// 마우스 드래그
+let isDragging = false;
+let dragStart = { x: 0, y: 0 };
+let dragStartOffset = { x: 0, y: 0 };
+
+function getCanvasScale() {
+  return canvas.clientWidth / CANVAS_W;
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  if (!currentImage) return;
+  isDragging = true;
+  canvas.classList.add('dragging');
+  dragStart.x = e.clientX;
+  dragStart.y = e.clientY;
+  dragStartOffset.x = imgState.offsetX;
+  dragStartOffset.y = imgState.offsetY;
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  const scale = getCanvasScale();
+  const dx = (e.clientX - dragStart.x) / scale;
+  const dy = (e.clientY - dragStart.y) / scale;
+  imgState.offsetX = dragStartOffset.x + dx;
+  imgState.offsetY = dragStartOffset.y + dy;
+  updateSliders();
+  drawCanvas();
+});
+
+window.addEventListener('mouseup', () => {
+  if (isDragging) {
+    isDragging = false;
+    canvas.classList.remove('dragging');
+  }
+});
+
+canvas.addEventListener('wheel', (e) => {
+  if (!currentImage) return;
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.05 : 0.05;
+  let newZoom = imgState.zoom + delta;
+  newZoom = Math.max(0.1, Math.min(5.0, newZoom));
+  imgState.zoom = newZoom;
+  updateSliders();
+  drawCanvas();
+}, { passive: false });
+
+// 터치
+let touchStart = null;
+let touchStartOffset = null;
+let lastTouchDistance = null;
+
+canvas.addEventListener('touchstart', (e) => {
+  if (!currentImage) return;
+  if (e.touches.length === 1) {
+    touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    touchStartOffset = { x: imgState.offsetX, y: imgState.offsetY };
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastTouchDistance = Math.sqrt(dx * dx + dy * dy);
+  }
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  if (!currentImage) return;
+  if (e.touches.length === 1 && touchStart) {
+    const scale = getCanvasScale();
+    const dx = (e.touches[0].clientX - touchStart.x) / scale;
+    const dy = (e.touches[0].clientY - touchStart.y) / scale;
+    imgState.offsetX = touchStartOffset.x + dx;
+    imgState.offsetY = touchStartOffset.y + dy;
+    updateSliders();
+    drawCanvas();
+  } else if (e.touches.length === 2 && lastTouchDistance) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const ratio = dist / lastTouchDistance;
+    let newZoom = imgState.zoom * ratio;
+    newZoom = Math.max(0.1, Math.min(5.0, newZoom));
+    imgState.zoom = newZoom;
+    lastTouchDistance = dist;
+    updateSliders();
+    drawCanvas();
+  }
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => {
+  touchStart = null;
+  touchStartOffset = null;
+  lastTouchDistance = null;
+});
+
+function downloadImage() {
+  const title = titleInput.value || '이미지';
+  const link = document.createElement('a');
+  link.download = `${title}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  showToast('✓ PNG 파일이 저장되었습니다', 'success');
+}
+
+async function copyImage() {
+  try {
+    canvas.toBlob(async (blob) => {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ]);
+        showToast('✓ 클립보드에 복사되었습니다! 카톡에 붙여넣기 하세요', 'success');
+      } catch (err) {
+        console.error('복사 실패:', err);
+        showToast('✗ 복사 실패: 브라우저가 지원하지 않거나 권한이 없습니다', 'error');
+      }
+    }, 'image/png');
+  } catch (err) {
+    console.error('복사 오류:', err);
+    showToast('✗ 복사 중 오류가 발생했습니다', 'error');
+  }
+}
+
+function showToast(message, type = '') {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.className = 'toast show ' + type;
+  setTimeout(() => {
+    toast.className = 'toast ' + type;
+  }, 2500);
+}
+
+drawCanvas();
+</script>
+</body>
+</html>
